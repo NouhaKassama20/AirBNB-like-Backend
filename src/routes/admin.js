@@ -1,8 +1,6 @@
 import express from 'express'
 import supabase from '../supabase.js'
 
-
-
 const router = express.Router()
 
 // ── STAT CARDS ──────────────────────────────────────────────
@@ -13,9 +11,9 @@ router.get('/stats', async (req, res) => {
     { count: totalClients },
     { count: totalComplaints },
   ] = await Promise.all([
-    supabase.from('property').select('*', { count: 'exact', head: true }),
-    supabase.from('guest').select('*',    { count: 'exact', head: true }),
-    supabase.from('complaints').select('*', { count: 'exact', head: true }),
+    supabase.from('property').select('*',    { count: 'exact', head: true }),
+    supabase.from('guest').select('*',       { count: 'exact', head: true }),
+    supabase.from('complaints').select('*',  { count: 'exact', head: true }),
   ])
 
   res.json({
@@ -27,7 +25,6 @@ router.get('/stats', async (req, res) => {
 
 // ── CHARTS ──────────────────────────────────────────────────
 
-// Bookings per month
 router.get('/bookings-per-month', async (req, res) => {
   const { data, error } = await supabase
     .from('bookings')
@@ -46,7 +43,6 @@ router.get('/bookings-per-month', async (req, res) => {
   res.json(months.map((month, i) => ({ month, bookings: counts[i] })))
 })
 
-// Revenue per month
 router.get('/revenue-per-month', async (req, res) => {
   const { data, error } = await supabase
     .from('payments')
@@ -66,24 +62,30 @@ router.get('/revenue-per-month', async (req, res) => {
   res.json(months.map((month, i) => ({ month, revenue: revenue[i] })))
 })
 
-// Listings by wilaya
 router.get('/listings-by-wilaya', async (req, res) => {
-  const { data, error } = await supabase
+  const { data: properties, error } = await supabase
     .from('property')
-    .select(`
-      property_id,
-      host:host_id (
-        user:host_id (
-          wilaya
-        )
-      )
-    `)
+    .select('host_id')
 
   if (error) return res.status(500).json({ error: error.message })
 
+  const hostIds = [...new Set(properties.map(p => p.host_id))]
+
+  const { data: users, error: usersError } = await supabase
+    .from('users')
+    .select('user_id, wilaya')
+    .in('user_id', hostIds)
+
+  if (usersError) return res.status(500).json({ error: usersError.message })
+
+  const wilayaMap = {}
+  users.forEach(u => {
+    wilayaMap[u.user_id] = u.wilaya
+  })
+
   const counts = {}
-  data.forEach(p => {
-    const wilaya = p.host?.user?.wilaya || 'Unknown'
+  properties.forEach(p => {
+    const wilaya = wilayaMap[p.host_id] || 'Unknown'
     counts[wilaya] = (counts[wilaya] || 0) + 1
   })
 
@@ -94,7 +96,6 @@ router.get('/listings-by-wilaya', async (req, res) => {
   res.json(result)
 })
 
-// Booking status breakdown
 router.get('/booking-status', async (req, res) => {
   const { data, error } = await supabase
     .from('bookings')
@@ -112,23 +113,16 @@ router.get('/booking-status', async (req, res) => {
   ])
 })
 
-// ── USERS TABLE ─────────────────────────────────────────────
+// ── USERS ────────────────────────────────────────────────────
 
 router.get('/users', async (req, res) => {
   const { data, error } = await supabase
     .from('users')
-    .select(`
-      user_id,
-      full_name,
-      email,
-      wilaya,
-      created_at
-    `)
+    .select('user_id, full_name, email, wilaya, created_at')
     .order('created_at', { ascending: false })
 
   if (error) return res.status(500).json({ error: error.message })
 
-  // Determine role for each user
   const userIds = data.map(u => u.user_id)
 
   const [{ data: hosts }, { data: guests }, { data: admins }] = await Promise.all([
@@ -152,7 +146,6 @@ router.get('/users', async (req, res) => {
   res.json(users)
 })
 
-// Ban a user (delete from guest or host table)
 router.delete('/users/:id', async (req, res) => {
   const { id } = req.params
 
@@ -168,28 +161,40 @@ router.delete('/users/:id', async (req, res) => {
   res.json({ message: 'User banned successfully' })
 })
 
-// ── COMPLAINTS ──────────────────────────────────────────────
+// ── COMPLAINTS ───────────────────────────────────────────────
 
 router.get('/complaints', async (req, res) => {
-  const { data, error } = await supabase
+  const { data: complaints, error } = await supabase
     .from('complaints')
-    .select(`
-      complaint_id,
-      description,
-      status,
-      created_at,
-      guest:guest_id (
-        user:guest_id ( full_name )
-      ),
-      target:target_id ( full_name )
-    `)
+    .select('complaint_id, description, status, created_at, guest_id, target_id')
     .order('created_at', { ascending: false })
 
   if (error) return res.status(500).json({ error: error.message })
-  res.json(data)
+
+  const userIds = [...new Set([
+    ...complaints.map(c => c.guest_id),
+    ...complaints.map(c => c.target_id),
+  ].filter(Boolean))]
+
+  const { data: users, error: usersError } = await supabase
+    .from('users')
+    .select('user_id, full_name')
+    .in('user_id', userIds)
+
+  if (usersError) return res.status(500).json({ error: usersError.message })
+
+  const userMap = {}
+  users.forEach(u => { userMap[u.user_id] = u.full_name })
+
+  const result = complaints.map(c => ({
+    ...c,
+    guest_name:  userMap[c.guest_id]  || '—',
+    target_name: userMap[c.target_id] || '—',
+  }))
+
+  res.json(result)
 })
 
-// Resolve a complaint
 router.patch('/complaints/:id/resolve', async (req, res) => {
   const { data, error } = await supabase
     .from('complaints')
@@ -205,22 +210,31 @@ router.patch('/complaints/:id/resolve', async (req, res) => {
 // ── TRANSACTIONS ─────────────────────────────────────────────
 
 router.get('/transactions', async (req, res) => {
-  const { data, error } = await supabase
+  const { data: payments, error } = await supabase
     .from('payments')
-    .select(`
-      payment_id,
-      total_price,
-      pay_method,
-      status,
-      created_at,
-      guest:guest_id (
-        user:guest_id ( full_name )
-      )
-    `)
+    .select('payment_id, total_price, pay_method, status, created_at, guest_id')
     .order('created_at', { ascending: false })
 
   if (error) return res.status(500).json({ error: error.message })
-  res.json(data)
+
+  const guestIds = [...new Set(payments.map(p => p.guest_id).filter(Boolean))]
+
+  const { data: users, error: usersError } = await supabase
+    .from('users')
+    .select('user_id, full_name')
+    .in('user_id', guestIds)
+
+  if (usersError) return res.status(500).json({ error: usersError.message })
+
+  const userMap = {}
+  users.forEach(u => { userMap[u.user_id] = u.full_name })
+
+  const result = payments.map(p => ({
+    ...p,
+    guest_name: userMap[p.guest_id] || '—',
+  }))
+
+  res.json(result)
 })
 
 export default router
