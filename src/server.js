@@ -1,41 +1,43 @@
-import express from 'express'
-import dotenv from 'dotenv'
-import propertiesRouter from './routes/properties.js'
-import bookingsRouter  from './routes/bookings.js'
-import cors from 'cors'
+// src/server.js
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
 import authRoutes from './routes/authRoutes.js';
+// adminDashboard Route
+import adminRouter from './routes/admin.js'
 
+
+// Keep your other routes too if you want them
+import propertiesRouter from './routes/properties.js';
+import bookingsRouter from './routes/bookings.js';
+import hostsRouter from './routes/hosts.js';
 
 dotenv.config();
 
+const app = express();
+const PORT = process.env.PORT || 5000;
 
-const app = express()
-app.use(cors())
-app.use(express.json())
-
-
-
-app.use('/api/properties', propertiesRouter)
-app.use('/api/bookings',   bookingsRouter)
-app.get('/', (req, res) => {
-  res.json({ message: 'API is running' })
-})
-
-// ─── Middleware ───────────────────────────────────────────────
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', credentials: true }));
+// Enhanced CORS configuration (merged from both versions)
+app.use(cors({ 
+  origin: process.env.CLIENT_URL || 'http://localhost:5173', 
+  credentials: true 
+}));
 app.use(express.json());
-// ─── Routes ──────────────────────────────────────────────────
-app.use('/api/auth', authRoutes);
-// ─── Health check ─────────────────────────────────────────────
+
+// All route handlers
+app.use('/api/auth', authRoutes);           // NEW: auth routes
+app.use('/api/properties', propertiesRouter);
+app.use('/api/bookings', bookingsRouter);
+app.use('/api/hosts', hostsRouter);          // NEW: hosts routes
+
+// Health check endpoint (from first version)
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
+// Root endpoint (from second version)
+app.get('/', (req, res) => {
+  res.json({ message: 'API is running' });
+});
 
-const PORT = process.env.PORT || 3000
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`)
-})
-
-
-
-
-
+  console.log(`Server running on http://localhost:${PORT}`);
+});
