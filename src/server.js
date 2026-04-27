@@ -3,6 +3,9 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import authRoutes from './routes/authRoutes.js';
+// adminDashboard Route
+import adminRouter from './routes/admin.js'
+
 
 // Keep your other routes too if you want them
 import propertiesRouter from './routes/properties.js';
@@ -26,7 +29,7 @@ app.use('/api/auth', authRoutes);           // NEW: auth routes
 app.use('/api/properties', propertiesRouter);
 app.use('/api/bookings', bookingsRouter);
 app.use('/api/hosts', hostsRouter);          // NEW: hosts routes
-
+app.use('/api/admin', adminRouter)
 // Health check endpoint (from first version)
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
