@@ -11,6 +11,10 @@ import adminRouter from './routes/admin.js'
 import propertiesRouter from './routes/properties.js';
 import bookingsRouter from './routes/bookings.js';
 import hostsRouter from './routes/hosts.js';
+// ADD this import at the top with the others:
+import hostPropertiesRouter from './routes/hostProperties.js';
+
+// ADD this line with the other app.use() routes:
 
 dotenv.config();
 
@@ -30,7 +34,7 @@ app.use('/api/properties', propertiesRouter);
 app.use('/api/bookings', bookingsRouter);
 app.use('/api/hosts', hostsRouter);          // NEW: hosts routes
 app.use('/api/admin', adminRouter);
-
+app.use('/api/host/properties', hostPropertiesRouter);
 // Health check endpoint (from first version)
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
