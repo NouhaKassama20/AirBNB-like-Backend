@@ -29,7 +29,7 @@ app.use('/api/auth', authRoutes);           // NEW: auth routes
 app.use('/api/properties', propertiesRouter);
 app.use('/api/bookings', bookingsRouter);
 app.use('/api/hosts', hostsRouter);          // NEW: hosts routes
-app.use('/api/admin', adminRouter)
+
 // Health check endpoint (from first version)
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
