@@ -1,3 +1,4 @@
+// src/controllers/authController.js
 import { supabase } from '../supabase.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -12,41 +13,54 @@ export const hostSignup = async (req, res) => {
   }
 
   try {
-    // 1. Create auth user in Supabase Auth
+    // ✅ 1. Check for duplicate email FIRST before creating anything
+    const { data: existing } = await supabase
+      .from('users')
+      .select('user_id')
+      .eq('email', email)
+      .maybeSingle();
+
+    if (existing) {
+      return res.status(400).json({ error: 'This email is already registered.' });
+    }
+
+    // ✅ 2. Check for duplicate username
+    const { data: existingUsername } = await supabase
+      .from('users')
+      .select('user_id')
+      .eq('username', username)
+      .maybeSingle();
+
+    if (existingUsername) {
+      return res.status(400).json({ error: 'This username is already taken.' });
+    }
+
+    // 3. Create auth user in Supabase Auth
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email,
       password,
-      email_confirm: true,       // skip email verification for now
+      email_confirm: true,
       user_metadata: { full_name, role: 'host' }
     });
 
     if (authError) return res.status(400).json({ error: authError.message });
 
     const userId = authData.user.id;
-     // Check if email already exists in auth before trying to create
-const { data: existing } = await supabase
-  .from('users')
-  .select('user_id')
-  .eq('email', email)
-  .maybeSingle();
 
-if (existing) {
-  return res.status(400).json({ error: 'This email is already registered.' });
-}
-    // 2. Insert into public.users table
+    // 4. Insert into public.users table
     const { error: userError } = await supabase
       .from('users')
       .insert({
         user_id: userId,
         full_name,
         email,
-        password: 'managed_by_supabase_auth',  // password is in Auth, not here
+        password: 'managed_by_supabase_auth',
         username,
-        age: age || null,
+        age:      age      || null,
         num_tele: num_tele || null,
-        wilaya: wilaya || null,
-        emploi: emploi || null,
-        sec_qst: sec_qst || null,
+        wilaya:   wilaya   || null,
+        emploi:   emploi   || null,
+        sec_qst:  sec_qst  || null,
       });
 
     if (userError) {
@@ -55,13 +69,15 @@ if (existing) {
       return res.status(400).json({ error: userError.message });
     }
 
-    // 3. Insert into public.host table
+    // 5. Insert into public.host table
     const { error: hostError } = await supabase
       .from('host')
       .insert({ host_id: userId });
 
     if (hostError) {
+      // Rollback: delete auth user and users row if host insert fails
       await supabase.auth.admin.deleteUser(userId);
+      await supabase.from('users').delete().eq('user_id', userId);
       return res.status(400).json({ error: hostError.message });
     }
 
@@ -71,8 +87,6 @@ if (existing) {
     console.error('hostSignup error:', err);
     return res.status(500).json({ error: 'Internal server error.' });
   }
-
-  
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -117,7 +131,7 @@ export const hostLogin = async (req, res) => {
 
     return res.status(200).json({
       message: 'Login successful.',
-      session: authData.session,   // contains access_token and refresh_token
+      session: authData.session,
       user: { ...userProfile, role: 'host' },
     });
 
