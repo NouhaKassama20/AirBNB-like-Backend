@@ -15,8 +15,17 @@ app.use(express.json());
 // ─── Routes ──────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 
+
+// adminDashboard Route
+import adminRouter from './routes/admin.js'
+app.use('/api/admin', adminRouter)
+
+
+
 // ─── Health check ─────────────────────────────────────────────
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
 // ─── Start ───────────────────────────────────────────────────
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+
+
