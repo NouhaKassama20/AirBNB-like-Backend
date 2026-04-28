@@ -34,7 +34,7 @@ router.post('/', async (req, res) => {
       title,
       location,
       price: parseFloat(price),
-      img: img || null,
+      img: Array.isArray(img) ? img : (img ? [img] : null),
       tags: tags || null,
       badge: badge || null,
       category: category || null,
