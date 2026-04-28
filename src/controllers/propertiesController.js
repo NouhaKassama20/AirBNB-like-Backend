@@ -13,6 +13,16 @@ export const getProperties = async (req, res) => {
        comment,
        created_at,
        property_id 
+      ),
+      host:host_id(
+        years_since_beginning,
+        users!host_host_id_fkey(  
+          full_name,
+          age, 
+          num_tele,
+          email,
+          profile_image
+        )
       )
     `);
 
@@ -23,11 +33,35 @@ export const getProperties = async (req, res) => {
 export const getPropertyById = async (req, res) => {
   const { data, error } = await supabase
     .from('property')
-    .select('*')
+    .select(`
+      *,
+      reviews!property2_review_id_fkey(
+        review_id,
+        guest_id,
+        booking_id,
+        rating,
+        comment,
+        created_at,
+        property_id
+      ),
+      host:host_id(
+        years_since_beginning,
+        users!host_host_id_fkey(  
+          full_name,
+          age, 
+          num_tele,
+          email,
+          profile_image
+        )
+      )
+    `)
     .eq('property_id', req.params.id)
     .single();
 
-  if (error) return res.status(404).json({ error: error.message });
+   if (error) {
+    console.log('Supabase error:', error); // 👈 add this
+    return res.status(404).json({ error: error.message });
+  }
   res.json(data);
 };
 
