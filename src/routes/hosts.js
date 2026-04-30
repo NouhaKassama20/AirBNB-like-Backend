@@ -125,4 +125,45 @@ router.post('/signup', async (req, res) => {
   })
 })
 
+// Add these to your existing src/routes/hosts.js file
+
+// GET host profile
+router.get('/:hostId/profile', async (req, res) => {
+  const { hostId } = req.params;
+  
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('user_id', hostId)
+    .single();
+  
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// UPDATE host profile
+router.put('/:hostId/profile', async (req, res) => {
+  const { hostId } = req.params;
+  const { full_name, age, num_tele, email, emploi, wilaya, username, profile_image } = req.body;
+  
+  const { data, error } = await supabase
+    .from('users')
+    .update({ 
+      full_name, 
+      age, 
+      num_tele, 
+      email, 
+      emploi, 
+      wilaya, 
+      username, 
+      profile_image 
+    })
+    .eq('user_id', hostId)
+    .select()
+    .single();
+  
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
 export default router
