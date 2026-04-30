@@ -8,7 +8,6 @@ const router = express.Router()
 router.post('/login', async (req, res) => {
   const { email, password } = req.body
 
-
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' })
   }
@@ -36,14 +35,14 @@ router.post('/login', async (req, res) => {
     return res.status(403).json({ error: 'This account is not registered as a host' })
   }
 
-    // Get full profile from users table
+  // Get full profile from users table
   const { data: userProfile } = await supabase
     .from('users')
-    .select('user_id, full_name, email, username, wilaya, is_banned')  // ← add is_banned
+    .select('user_id, full_name, email, username, wilaya, is_banned')
     .eq('user_id', userId)
     .single()
 
-  // ← add this check
+  // Check if user is banned
   if (userProfile?.is_banned) {
     return res.status(403).json({ error: 'Your account has been banned. Please contact support.' })
   }
@@ -124,8 +123,6 @@ router.post('/signup', async (req, res) => {
     host: { ...userProfile, host_id: userId }
   })
 })
-
-// Add these to your existing src/routes/hosts.js file
 
 // GET host profile
 router.get('/:hostId/profile', async (req, res) => {
