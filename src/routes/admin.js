@@ -56,11 +56,15 @@ router.get('/revenue-per-month', async (req, res) => {
 
   data.forEach(p => {
     const month = new Date(p.created_at).getMonth()
-    revenue[month] += p.total_price
+    revenue[month] += Number(p.total_price)
+   // console.log('revenue values:', revenuePerMonth.map(r => r.revenue))
+
   })
 
   res.json(months.map((month, i) => ({ month, revenue: revenue[i] })))
 })
+
+
 
 router.get('/listings-by-wilaya', async (req, res) => {
   const { data: properties, error } = await supabase
@@ -92,6 +96,7 @@ router.get('/listings-by-wilaya', async (req, res) => {
   const result = Object.entries(counts)
     .map(([wilaya, listings]) => ({ wilaya, listings }))
     .sort((a, b) => b.listings - a.listings)
+     .slice(0, 6)  // ← add this
 
   res.json(result)
 })
@@ -118,7 +123,7 @@ router.get('/booking-status', async (req, res) => {
 router.get('/users', async (req, res) => {
   const { data, error } = await supabase
     .from('users')
-    .select('user_id, full_name, email, wilaya, created_at')
+    .select('user_id, full_name, email, wilaya, created_at, is_banned')
     .order('created_at', { ascending: false })
 
   if (error) return res.status(500).json({ error: error.message })
@@ -146,19 +151,24 @@ router.get('/users', async (req, res) => {
   res.json(users)
 })
 
-router.delete('/users/:id', async (req, res) => {
-  const { id } = req.params
-
-  await supabase.from('host').delete().eq('host_id', id)
-  await supabase.from('guest').delete().eq('guest_id', id)
-
+router.patch('/users/:id/ban', async (req, res) => {
   const { error } = await supabase
     .from('users')
-    .delete()
-    .eq('user_id', id)
+    .update({ is_banned: true })
+    .eq('user_id', req.params.id)
 
   if (error) return res.status(500).json({ error: error.message })
   res.json({ message: 'User banned successfully' })
+})
+
+router.patch('/users/:id/unban', async (req, res) => {
+  const { error } = await supabase
+    .from('users')
+    .update({ is_banned: false })
+    .eq('user_id', req.params.id)
+
+  if (error) return res.status(500).json({ error: error.message })
+  res.json({ message: 'User unbanned successfully' })
 })
 
 // ── COMPLAINTS ───────────────────────────────────────────────
