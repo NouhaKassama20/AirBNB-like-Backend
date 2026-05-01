@@ -171,13 +171,42 @@ router.patch('/users/:id/unban', async (req, res) => {
   res.json({ message: 'User unbanned successfully' })
 })
 
+router.delete('/users/:id', async (req, res) => {
+  const { id } = req.params
+
+  await supabase.from('reviews').delete().eq('guest_id', id)
+  await supabase.from('experience_review').delete().eq('guest_id', id)
+  await supabase.from('experience_booking').delete().eq('guest_id', id)
+  await supabase.from('payments').delete().eq('guest_id', id)
+  await supabase.from('payments').delete().eq('host_id', id)
+  await supabase.from('bookings').delete().eq('guest_id', id)
+  await supabase.from('complaints').delete().eq('guest_id', id)
+  await supabase.from('complaints').delete().eq('target_id', id)
+  await supabase.from('wishlist').delete().eq('guest_id', id)
+  await supabase.from('property').delete().eq('host_id', id)
+  await supabase.from('experience').delete().eq('host_id', id)
+  await supabase.from('host').delete().eq('host_id', id)
+  await supabase.from('guest').delete().eq('guest_id', id)
+  await supabase.from('admin').delete().eq('admin_id', id)
+
+  const { error } = await supabase.from('users').delete().eq('user_id', id)
+  if (error) return res.status(500).json({ error: error.message })
+
+  // Delete from Supabase Auth too
+  const { error: authError } = await supabase.auth.admin.deleteUser(id)
+  if (authError) console.error('Auth delete error:', authError.message)
+
+  res.json({ message: 'Account deleted successfully' })
+})
+
 // ── COMPLAINTS ───────────────────────────────────────────────
 
 router.get('/complaints', async (req, res) => {
-  const { data: complaints, error } = await supabase
-    .from('complaints')
-    .select('complaint_id, description, status, created_at, guest_id, target_id')
-    .order('created_at', { ascending: false })
+ const { data: complaints, error } = await supabase
+  .from('complaints')
+  .select('complaint_id, description, status, created_at, guest_id, target_id')
+  .order('status', { ascending: true })  // 'dismissed', 'open', 'resolved' alphabetically — won't work perfectly
+    
 
   if (error) return res.status(500).json({ error: error.message })
 
@@ -185,6 +214,8 @@ router.get('/complaints', async (req, res) => {
     ...complaints.map(c => c.guest_id),
     ...complaints.map(c => c.target_id),
   ].filter(Boolean))]
+
+  
 
   const { data: users, error: usersError } = await supabase
     .from('users')
@@ -212,6 +243,19 @@ router.patch('/complaints/:id/resolve', async (req, res) => {
     .eq('complaint_id', req.params.id)
     .select()
     .single()
+
+  if (error) return res.status(500).json({ error: error.message })
+  res.json(data)
+})
+
+router.patch('/complaints/:id/dismiss', async (req, res) => {
+  const { data, error } = await supabase
+    .from('complaints')
+    .update({ status: 'dismissed' })
+    .eq('complaint_id', req.params.id)
+    .select()
+    .single()
+  
 
   if (error) return res.status(500).json({ error: error.message })
   res.json(data)
@@ -245,6 +289,147 @@ router.get('/transactions', async (req, res) => {
   }))
 
   res.json(result)
+})
+
+// ── HOSTS MANAGEMENT ─────────────────────────────────────
+
+router.get('/hosts', async (req, res) => {
+  const { data: hosts, error } = await supabase
+    .from('host')
+    .select('host_id, is_verified, years_since_beginning')
+
+  if (error) return res.status(500).json({ error: error.message })
+
+  const hostIds = hosts.map(h => h.host_id)
+
+  const { data: users, error: usersError } = await supabase
+    .from('users')
+    .select('user_id, full_name, email, wilaya, num_tele, created_at, is_banned')
+    .in('user_id', hostIds)
+
+  if (usersError) return res.status(500).json({ error: usersError.message })
+
+  const userMap = {}
+  users.forEach(u => { userMap[u.user_id] = u })
+
+  const result = hosts.map(h => ({
+    ...h,
+    ...userMap[h.host_id],
+  }))
+
+  res.json(result)
+})
+
+router.patch('/hosts/:id/verify', async (req, res) => {
+  const { error } = await supabase
+    .from('host')
+    .update({ is_verified: true })
+    .eq('host_id', req.params.id)
+
+  if (error) return res.status(500).json({ error: error.message })
+  res.json({ message: 'Host verified successfully' })
+})
+
+router.patch('/hosts/:id/unverify', async (req, res) => {
+  const { error } = await supabase
+    .from('host')
+    .update({ is_verified: false })
+    .eq('host_id', req.params.id)
+
+  if (error) return res.status(500).json({ error: error.message })
+  res.json({ message: 'Host unverified' })
+})
+
+router.get('/hosts/:id/bookings', async (req, res) => {
+  const { data: properties, error: propError } = await supabase
+    .from('property')
+    .select('property_id, title')
+    .eq('host_id', req.params.id)
+
+  if (propError) return res.status(500).json({ error: propError.message })
+
+     // console.log('host id:', req.params.id)
+  //console.log('properties found:', properties)
+
+  if (propError) return res.status(500).json({ error: propError.message })
+  if (!properties.length) return res.json([])
+    
+
+  if (!properties.length) return res.json([])
+
+  const propertyIds = properties.map(p => p.property_id)
+  const propMap = {}
+  properties.forEach(p => { propMap[p.property_id] = p.title })
+
+  const { data: bookings, error } = await supabase
+    .from('bookings')
+    .select('booking_id, arrival, departure, total_price, status, created_at, travelers, guest_id')
+    .in('property_id', propertyIds)
+    .order('created_at', { ascending: false })
+
+  if (error) return res.status(500).json({ error: error.message })
+
+  const guestIds = [...new Set(bookings.map(b => b.guest_id).filter(Boolean))]
+
+  const { data: guests } = await supabase
+    .from('users')
+    .select('user_id, full_name')
+    .in('user_id', guestIds)
+
+  const guestMap = {}
+  guests?.forEach(g => { guestMap[g.user_id] = g.full_name })
+
+  const result = bookings.map(b => ({
+    ...b,
+    guest_name: guestMap[b.guest_id] || '—',
+    property_title: propMap[b.property_id] || '—',
+  }))
+
+  res.json(result)
+})
+
+
+//Admin Login 
+
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body
+
+  if (!email || !password)
+    return res.status(400).json({ error: 'Email and password are required' })
+
+  const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password })
+
+  //console.log('authData:', authData)
+  //console.log('authError:', authError)
+
+  if (authError || !authData.user)
+    return res.status(401).json({ error: 'Invalid email or password' })
+
+
+  const userId = authData.user.id
+ // console.log('userId:', userId)
+
+  // Check if user is in admin table
+  const { data: admin, error: adminError } = await supabase
+    .from('admin')
+    .select('admin_id')
+    .eq('admin_id', userId)
+    .single()
+
+  if (adminError || !admin)
+    return res.status(403).json({ error: 'Access denied. Not an admin.' })
+
+  const { data: profile } = await supabase
+    .from('users')
+    .select('user_id, full_name, email')
+    .eq('user_id', userId)
+    .single()
+
+
+  //console.log('admin:', admin)
+  //console.log('adminError:', adminError)
+
+  res.json({ admin: profile })
 })
 
 export default router
