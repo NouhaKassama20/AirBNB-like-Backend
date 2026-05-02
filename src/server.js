@@ -52,6 +52,9 @@ app.use('/api/properties', propertiesRouter);
 // Health check endpoint
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
+import guestRouter from './routes/guests.js'
+app.use('/api/guests', guestRouter)
+
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({ message: 'API is running' });
