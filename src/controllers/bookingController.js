@@ -76,6 +76,7 @@ export const getBookingsByHost = async (req, res) => {
   const { data: bookings, error: bkErr } = await supabase
   .rpc('get_bookings_by_host', { host_uuid: hostId })
   console.log("🏠🏠🏠 ", bookings)
+  console.log("❌ bkErr:", bkErr) 
 
   if (bkErr) {
     console.error('❌ Bookings fetch error:', bkErr)
