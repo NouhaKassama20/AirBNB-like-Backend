@@ -67,12 +67,15 @@ export const getBookingsByHost = async (req, res) => {
   //   .select('*')
   //   .in('property_id', propertyIds)
   // 2. Get all bookings for those properties - use contains check instead of .in()
+  // const { data: bookings, error: bkErr } = await supabase
+  // .from('bookings')
+  // .select('*')
+  // .or(propertyIds.map(id => `property_id.eq.${id}`).join(','))
+  //   // .order('created_at', { ascending: false }) 
+  // console.log("🏠🏠🏠 ",bookings)  
   const { data: bookings, error: bkErr } = await supabase
-  .from('bookings')
-  .select('*')
-  .or(propertyIds.map(id => `property_id.eq.${id}`).join(','))
-    // .order('created_at', { ascending: false }) 
-  console.log("🏠🏠🏠 ",bookings)  
+  .rpc('get_bookings_by_host', { host_uuid: hostId })
+  console.log("🏠🏠🏠 ", bookings)
 
   if (bkErr) {
     console.error('❌ Bookings fetch error:', bkErr)
