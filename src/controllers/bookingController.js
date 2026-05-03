@@ -76,7 +76,7 @@ export const getBookingsByHost = async (req, res) => {
   const { data: bookings, error: bkErr } = await supabase
   .rpc('get_bookings_by_host', { host_uuid: hostId })
   console.log("🏠🏠🏠 ", bookings)
-
+  console.log("❌ bkErr:", JSON.stringify(bkErr))
   if (bkErr) {
     console.error('❌ Bookings fetch error:', bkErr)
     return res.status(500).json({ error: bkErr.message })
@@ -126,9 +126,30 @@ export const getBookingsByHost = async (req, res) => {
 export const createBooking = async (req, res) => {
   const { guest_id, property_id, arrival, departure, travelers, total_price, status, reminder_date } = req.body
 
-  // Validation des champs requis
   if (!guest_id || !property_id || !arrival || !departure || !total_price) {
     return res.status(400).json({ error: 'Champs requis manquants' })
+  }
+
+  // ✅ Check for confirmed bookings that overlap with requested dates
+  const { data: conflicts, error: conflictErr } = await supabase
+    .from('bookings')
+    .select('booking_id, arrival, departure, status')
+    .eq('property_id', property_id)
+    .eq('status', 'confirmed')
+    .or(`and(arrival.lte.${departure},departure.gte.${arrival})`)
+
+  if (conflictErr) {
+    return res.status(500).json({ error: conflictErr.message })
+  }
+
+  if (conflicts && conflicts.length > 0) {
+    return res.status(409).json({ 
+      error: 'Cette propriété est déjà réservée pour cette période.',
+      conflict: {
+        arrival: conflicts[0].arrival,
+        departure: conflicts[0].departure
+      }
+    })
   }
 
   const { data, error } = await supabase
@@ -141,7 +162,6 @@ export const createBooking = async (req, res) => {
       travelers, 
       total_price, 
       status: status || 'pending', 
-      // reminder_date,
       created_at: new Date()
     }])
     .select()
@@ -151,7 +171,6 @@ export const createBooking = async (req, res) => {
   res.status(201).json(data)
 }
 
-// PATCH /api/bookings/:id/status
 export const updateBookingStatus = async (req, res) => {
   const { status } = req.body
   const { id } = req.params
@@ -163,14 +182,13 @@ export const updateBookingStatus = async (req, res) => {
 
   const { data, error } = await supabase
     .from('bookings')
-    .update({ status, updated_at: new Date() })
+    .update({ status })  // ← remove updated_at: new Date()
     .eq('booking_id', id)
     .select()
     .single()
 
   if (error) return res.status(500).json({ error: error.message })
   
-  console.log(`✅ Booking ${id} status updated to ${status}`)
   res.json({ 
     success: true, 
     booking: data,
