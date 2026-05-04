@@ -26,14 +26,18 @@ router.post('/login', async (req, res) => {
 
   // Check this user is actually a host
   const { data: host, error: hostError } = await supabase
-    .from('host')
-    .select('host_id')
-    .eq('host_id', userId)
-    .single()
+  .from('host')
+  .select('host_id, is_verified')
+  .eq('host_id', userId)
+  .single()
 
   if (hostError || !host) {
     return res.status(403).json({ error: 'This account is not registered as a host' })
   }
+  
+  if (!host.is_verified) {
+  return res.status(403).json({ error: 'Your account is pending approval. Please wait for admin verification.' })
+}
 
   // Get full profile from users table
   const { data: userProfile } = await supabase
@@ -46,6 +50,11 @@ router.post('/login', async (req, res) => {
   if (userProfile?.is_banned) {
     return res.status(403).json({ error: 'Your account has been banned. Please contact support.' })
   }
+
+// Host verification
+if (!hostData.is_verified) {
+  return res.status(403).json({ error: 'Your account is pending approval. Please wait for admin verification.' })
+}
 
   res.json({
     host: { ...userProfile, host_id: userId }
