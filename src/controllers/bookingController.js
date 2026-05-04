@@ -41,7 +41,7 @@ export const getBookingsByGuest = async (req, res) => {
     console.error('Error fetching guest bookings:', error);
     return res.status(500).json({ error: error.message });
   }
-  
+  console.log('Helloooooo',data)
   res.json(data);
 };
 
