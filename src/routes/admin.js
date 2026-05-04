@@ -120,7 +120,7 @@ router.get('/booking-status', async (req, res) => {
 
 // ── USERS ────────────────────────────────────────────────────
 
-router.get('/users', async (req, res) => {
+  router.get('/users', async (req, res) => {
   const { data, error } = await supabase
     .from('users')
     .select('user_id, full_name, email, wilaya, created_at, is_banned')
@@ -130,15 +130,27 @@ router.get('/users', async (req, res) => {
 
   const userIds = data.map(u => u.user_id)
 
-  const [{ data: hosts }, { data: guests }, { data: admins }] = await Promise.all([
+  // ← Guard: if no users, return early
+  if (userIds.length === 0) return res.json([])
+
+  const [
+    { data: hosts,  error: hostErr  },
+    { data: guests, error: guestErr },
+    { data: admins, error: adminErr },
+  ] = await Promise.all([
     supabase.from('host').select('host_id').in('host_id', userIds),
     supabase.from('guest').select('guest_id').in('guest_id', userIds),
     supabase.from('admin').select('admin_id').in('admin_id', userIds),
   ])
 
-  const hostSet  = new Set(hosts.map(h => h.host_id))
-  const guestSet = new Set(guests.map(g => g.guest_id))
-  const adminSet = new Set(admins.map(a => a.admin_id))
+  // ← Log errors so you can see what's failing
+  if (hostErr)  console.error('host query error:',  hostErr.message)
+  if (guestErr) console.error('guest query error:', guestErr.message)
+  if (adminErr) console.error('admin query error:', adminErr.message)
+
+  const hostSet  = new Set((hosts  || []).map(h => h.host_id))
+  const guestSet = new Set((guests || []).map(g => g.guest_id))
+  const adminSet = new Set((admins || []).map(a => a.admin_id))
 
   const users = data.map(u => ({
     ...u,
@@ -174,30 +186,45 @@ router.patch('/users/:id/unban', async (req, res) => {
 router.delete('/users/:id', async (req, res) => {
   const { id } = req.params
 
-  await supabase.from('reviews').delete().eq('guest_id', id)
-  await supabase.from('experience_review').delete().eq('guest_id', id)
-  await supabase.from('experience_booking').delete().eq('guest_id', id)
+  const steps = [
+    supabase.from('reviews').delete().eq('guest_id', id),
+    supabase.from('experience_review').delete().eq('guest_id', id),
+    supabase.from('experience_booking').delete().eq('guest_id', id),
+    supabase.from('wishlist').delete().eq('guest_id', id),
+  ]
+
+  await Promise.all(steps)
+
+  // payments references both guest and host — do these after
   await supabase.from('payments').delete().eq('guest_id', id)
   await supabase.from('payments').delete().eq('host_id', id)
+
+  // bookings references guest — after payments
   await supabase.from('bookings').delete().eq('guest_id', id)
+
+  // complaints
   await supabase.from('complaints').delete().eq('guest_id', id)
   await supabase.from('complaints').delete().eq('target_id', id)
-  await supabase.from('wishlist').delete().eq('guest_id', id)
+
+  // properties and experiences
   await supabase.from('property').delete().eq('host_id', id)
   await supabase.from('experience').delete().eq('host_id', id)
+
+  // role tables — must be before users
   await supabase.from('host').delete().eq('host_id', id)
   await supabase.from('guest').delete().eq('guest_id', id)
   await supabase.from('admin').delete().eq('admin_id', id)
 
+  // finally users
   const { error } = await supabase.from('users').delete().eq('user_id', id)
   if (error) return res.status(500).json({ error: error.message })
 
-  // Delete from Supabase Auth too
   const { error: authError } = await supabase.auth.admin.deleteUser(id)
   if (authError) console.error('Auth delete error:', authError.message)
 
   res.json({ message: 'Account deleted successfully' })
 })
+
 
 // ── COMPLAINTS ───────────────────────────────────────────────
 
@@ -387,6 +414,31 @@ router.get('/hosts/:id/bookings', async (req, res) => {
 
   res.json(result)
 })
+
+
+// Ban a host
+router.patch('/hosts/:id/ban', async (req, res) => {
+  const { error } = await supabase
+    .from('users')
+    .update({ is_banned: true })
+    .eq('user_id', req.params.id)
+
+  if (error) return res.status(500).json({ error: error.message })
+  res.json({ message: 'Host banned successfully' })
+})
+
+// Unban a host
+router.patch('/hosts/:id/unban', async (req, res) => {
+  const { error } = await supabase
+    .from('users')
+    .update({ is_banned: false })
+    .eq('user_id', req.params.id)
+
+  if (error) return res.status(500).json({ error: error.message })
+  res.json({ message: 'Host unbanned successfully' })
+})
+
+
 
 
 //Admin Login 

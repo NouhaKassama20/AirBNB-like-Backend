@@ -34,10 +34,8 @@ router.post('/login', async (req, res) => {
   if (hostError || !host) {
     return res.status(403).json({ error: 'This account is not registered as a host' })
   }
-  
-  if (!host.is_verified) {
-  return res.status(403).json({ error: 'Your account is pending approval. Please wait for admin verification.' })
-}
+
+ 
 
   // Get full profile from users table
   const { data: userProfile } = await supabase
@@ -52,7 +50,7 @@ router.post('/login', async (req, res) => {
   }
 
 // Host verification
-if (!hostData.is_verified) {
+if (!host.is_verified) {
   return res.status(403).json({ error: 'Your account is pending approval. Please wait for admin verification.' })
 }
 
