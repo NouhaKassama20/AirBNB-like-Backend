@@ -10,9 +10,10 @@ import bookingsRouter from './routes/bookings.js';
 import hostsRouter from './routes/hosts.js';
 import hostPropertiesRouter from './routes/hostProperties.js';
 import { uploadImages, uploadVideo, handleImageUpload, handleVideoUpload } from './controllers/uploadController.js';
-// In server.js, add this import
 import reviewsRouter from './routes/reviews.js';
 import propertiesRouter from './routes/properties.js';
+import guestRouter from './routes/guests.js';
+import wishlistRoutes from './routes/wishlist.js'; // ✅ Import wishlist routes (ES module syntax)
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,14 +47,12 @@ app.use('/api/bookings', bookingsRouter);
 app.use('/api/hosts', hostsRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/host/properties', hostPropertiesRouter);
-// Add this route (near your other routes)
 app.use('/api/reviews', reviewsRouter);
-app.use('/api/properties', propertiesRouter);
+app.use('/api/guests', guestRouter);
+app.use('/api/wishlist', wishlistRoutes); // ✅ Use the imported wishlist routes
+
 // Health check endpoint
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
-
-import guestRouter from './routes/guests.js'
-app.use('/api/guests', guestRouter)
 
 // Root endpoint
 app.get('/', (req, res) => {
