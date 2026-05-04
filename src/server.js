@@ -13,7 +13,7 @@ import { uploadImages, uploadVideo, handleImageUpload, handleVideoUpload } from 
 import reviewsRouter from './routes/reviews.js';
 import propertiesRouter from './routes/properties.js';
 import guestRouter from './routes/guests.js';
-import wishlistRoutes from './routes/wishlist.js'; // ✅ Import wishlist routes (ES module syntax)
+import wishlistRoutes from './routes/wishlist.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,15 +41,16 @@ app.post('/api/upload/property-images', uploadImages.array('images', 10), handle
 app.post('/api/upload/property-video', uploadVideo.single('video'), handleVideoUpload);
 
 // All route handlers
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', authRoutes); 
+app.use('/api/reviews', reviewsRouter); 
 app.use('/api/properties', propertiesRouter);
 app.use('/api/bookings', bookingsRouter);
 app.use('/api/hosts', hostsRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/host/properties', hostPropertiesRouter);
-app.use('/api/reviews', reviewsRouter);
 app.use('/api/guests', guestRouter);
-app.use('/api/wishlist', wishlistRoutes); // ✅ Use the imported wishlist routes
+app.use('/api/wishlist', wishlistRoutes);
+app.use('/api', reviewsRouter);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));

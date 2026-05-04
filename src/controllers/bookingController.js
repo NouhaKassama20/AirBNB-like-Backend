@@ -1,4 +1,5 @@
-import supabase from '../supabase.js'
+// src/controllers/bookingController.js
+import supabase from '../supabase.js';
 
 // GET /api/bookings
 export const getAllBookings = async (req, res) => {
@@ -9,8 +10,7 @@ export const getAllBookings = async (req, res) => {
       property (
         title,
         location,
-        price,
-        
+        price
       )
     `)
 
@@ -20,33 +20,40 @@ export const getAllBookings = async (req, res) => {
 
 // GET /api/bookings/guest/:guestId
 export const getBookingsByGuest = async (req, res) => {
+  const { guestId } = req.params;
+  
   const { data, error } = await supabase
     .from('bookings')
     .select(`
       *,
-      property(
+      property:property_id (
+        property_id,
         title,
         price,
-        location
+        location,
+        img
       )
     `)
-    .eq('guest_id', req.params.guestId)
+    .eq('guest_id', guestId)
+    .order('created_at', { ascending: false });
 
-  if (error) return res.status(500).json({ error: error.message })
-  res.json(data)
-}
+  if (error) {
+    console.error('Error fetching guest bookings:', error);
+    return res.status(500).json({ error: error.message });
+  }
+  
+  res.json(data);
+};
 
 // GET /api/bookings/host/:hostId
 export const getBookingsByHost = async (req, res) => {
   const { hostId } = req.params
   console.log(`🔹 GET /api/bookings/host/${hostId}`)
 
-  // 1. Get all property_ids belonging to this host
   const { data: property, error: propErr } = await supabase
     .from('property')
     .select('property_id, title, location')
     .eq('host_id', hostId)
-  console.log("😂😂😂😂😂 Property: ", property)  
 
   if (propErr) {
     console.error('❌ Properties fetch error:', propErr)
@@ -59,34 +66,18 @@ export const getBookingsByHost = async (req, res) => {
 
   const propertyIds = property.map(p => p.property_id)
   const propertyMap = Object.fromEntries(property.map(p => [p.property_id, p.title || 'Propriété']))
-  console.log("1️⃣1️⃣ ids: ", propertyIds)
 
-  // 2. Get all bookings for those properties
-  // const { data: bookings, error: bkErr } = await supabase
-  //   .from('bookings')
-  //   .select('*')
-  //   .in('property_id', propertyIds)
-  // 2. Get all bookings for those properties - use contains check instead of .in()
-  // const { data: bookings, error: bkErr } = await supabase
-  // .from('bookings')
-  // .select('*')
-  // .or(propertyIds.map(id => `property_id.eq.${id}`).join(','))
-  //   // .order('created_at', { ascending: false }) 
-  // console.log("🏠🏠🏠 ",bookings)  
   const { data: bookings, error: bkErr } = await supabase
-  .rpc('get_bookings_by_host', { host_uuid: hostId })
-  console.log("🏠🏠🏠 ", bookings)
-  console.log("❌ bkErr:", JSON.stringify(bkErr))
+    .rpc('get_bookings_by_host', { host_uuid: hostId })
+
   if (bkErr) {
     console.error('❌ Bookings fetch error:', bkErr)
     return res.status(500).json({ error: bkErr.message })
   }
 
-  // 3. Get guest info for each unique guest_id
   const guestIds = [...new Set((bookings || []).map(b => b.guest_id).filter(Boolean))]
   let guestMap = {}
 
-  console.log('🥸',guestIds)
   if (guestIds.length > 0) {
     const { data: guests, error: gErr } = await supabase
       .from('guests')
@@ -100,7 +91,6 @@ export const getBookingsByHost = async (req, res) => {
     }
   }
 
-  // 4. Enrich and return
   const enriched = (bookings || []).map(b => ({
     booking_id: b.booking_id,
     arrival: b.arrival,
@@ -118,11 +108,10 @@ export const getBookingsByHost = async (req, res) => {
     guest_image: guestMap[b.guest_id]?.profile_image || null
   }))
 
-  console.log(`✅ ${enriched.length} bookings fetched for host ${hostId}`)
   res.json(enriched)
 }
 
-// POST /api/bookings
+// POST /api/bookings - WITH DUPLICATE CHECK
 export const createBooking = async (req, res) => {
   const { guest_id, property_id, arrival, departure, travelers, total_price, status, reminder_date } = req.body
 
@@ -130,7 +119,31 @@ export const createBooking = async (req, res) => {
     return res.status(400).json({ error: 'Champs requis manquants' })
   }
 
-  // ✅ Check for confirmed bookings that overlap with requested dates
+  // ✅ Check if guest already has a booking for the same property with overlapping dates
+  const { data: guestConflict, error: guestConflictErr } = await supabase
+    .from('bookings')
+    .select('booking_id, arrival, departure, status')
+    .eq('guest_id', guest_id)
+    .eq('property_id', property_id)
+    .in('status', ['pending', 'confirmed'])
+    .or(`and(arrival.lte.${departure},departure.gte.${arrival})`)
+
+  if (guestConflictErr) {
+    return res.status(500).json({ error: guestConflictErr.message })
+  }
+
+  if (guestConflict && guestConflict.length > 0) {
+    return res.status(409).json({ 
+      error: 'Vous avez déjà une réservation pour cette propriété pendant cette période.',
+      conflict: {
+        arrival: guestConflict[0].arrival,
+        departure: guestConflict[0].departure,
+        status: guestConflict[0].status
+      }
+    })
+  }
+
+  // ✅ Check for confirmed bookings that overlap with requested dates (from other guests)
   const { data: conflicts, error: conflictErr } = await supabase
     .from('bookings')
     .select('booking_id, arrival, departure, status')
@@ -182,7 +195,7 @@ export const updateBookingStatus = async (req, res) => {
 
   const { data, error } = await supabase
     .from('bookings')
-    .update({ status })  // ← remove updated_at: new Date()
+    .update({ status })
     .eq('booking_id', id)
     .select()
     .single()
@@ -196,7 +209,108 @@ export const updateBookingStatus = async (req, res) => {
   })
 }
 
-// DELETE /api/bookings/:id
+// UPDATE booking dates
+export const updateBookingDates = async (req, res) => {
+  const { bookingId } = req.params
+  const { arrival, departure, guest_id } = req.body
+
+  if (!arrival || !departure) {
+    return res.status(400).json({ error: 'Les dates d\'arrivée et de départ sont requises' })
+  }
+
+  if (new Date(arrival) >= new Date(departure)) {
+    return res.status(400).json({ error: 'La date de départ doit être après la date d\'arrivée' })
+  }
+
+  if (new Date(arrival) < new Date()) {
+    return res.status(400).json({ error: 'Impossible de modifier vers une date passée' })
+  }
+
+  try {
+    const { data: currentBooking, error: fetchError } = await supabase
+      .from('bookings')
+      .select('property_id, status, guest_id')
+      .eq('booking_id', bookingId)
+      .single()
+
+    if (fetchError) {
+      return res.status(500).json({ error: fetchError.message })
+    }
+
+    if (!currentBooking) {
+      return res.status(404).json({ error: 'Réservation non trouvée' })
+    }
+
+    // Check if guest already has another booking for same property with overlapping dates
+    const { data: guestOverlap, error: guestOverlapErr } = await supabase
+      .from('bookings')
+      .select('booking_id')
+      .eq('guest_id', guest_id || currentBooking.guest_id)
+      .eq('property_id', currentBooking.property_id)
+      .neq('booking_id', bookingId)
+      .in('status', ['pending', 'confirmed'])
+      .or(`and(arrival.lte.${departure},departure.gte.${arrival})`)
+
+    if (guestOverlapErr) {
+      return res.status(500).json({ error: guestOverlapErr.message })
+    }
+
+    if (guestOverlap && guestOverlap.length > 0) {
+      return res.status(409).json({
+        error: 'Vous avez déjà une réservation pour cette propriété pendant cette période.'
+      })
+    }
+
+    // Check for overlapping confirmed bookings from other guests
+    const { data: conflicts, error: conflictError } = await supabase
+      .from('bookings')
+      .select('booking_id, arrival, departure')
+      .eq('property_id', currentBooking.property_id)
+      .eq('status', 'confirmed')
+      .neq('booking_id', bookingId)
+      .or(`and(arrival.lte.${departure},departure.gte.${arrival})`)
+
+    if (conflictError) {
+      return res.status(500).json({ error: conflictError.message })
+    }
+
+    if (conflicts && conflicts.length > 0) {
+      return res.status(409).json({
+        error: 'Ces dates entrent en conflit avec une réservation déjà confirmée',
+        conflicts: conflicts.map(c => ({
+          arrival: c.arrival,
+          departure: c.departure
+        }))
+      })
+    }
+
+    // Update the booking dates
+    const { data, error } = await supabase
+      .from('bookings')
+      .update({ 
+        arrival, 
+        departure,
+        status: 'pending'
+      })
+      .eq('booking_id', bookingId)
+      .select()
+
+    if (error) {
+      return res.status(500).json({ error: error.message })
+    }
+
+    res.json({ 
+      success: true, 
+      booking: data[0],
+      message: 'Dates modifiées avec succès. La réservation est en attente de confirmation.'
+    })
+
+  } catch (error) {
+    console.error('Error updating booking dates:', error)
+    res.status(500).json({ error: 'Erreur lors de la modification des dates' })
+  }
+}
+
 export const cancelBooking = async (req, res) => {
   const { id } = req.params
 
@@ -210,7 +324,6 @@ export const cancelBooking = async (req, res) => {
   res.json({ message: 'Booking cancelled successfully' })
 }
 
-// GET /api/bookings/:id - Récupérer une réservation spécifique
 export const getBookingById = async (req, res) => {
   const { id } = req.params
 
